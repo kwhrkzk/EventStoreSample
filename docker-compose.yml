@@ -1,0 +1,65 @@
+version: '3.7'
+services:
+  usecase1:
+    image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
+    container_name: "usecase1"
+    volumes:
+      - ./project:/project
+    command: >
+      bash -c 
+      "cp -rf /project /root &&
+      dotnet pack /root/project/MainApp -c Release -o /root/project/MainApp && 
+      dotnet tool install MainApp --tool-path /bin --configfile /root/project/MainApp/nuget.config && 
+      /bin/bash"
+    tty: true
+  usecase2:
+    image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
+    container_name: "usecase2"
+    volumes:
+      - ./project:/project
+    command: >
+      bash -c 
+      "cp -rf /project /root &&
+      dotnet pack /root/project/MainApp -c Release -o /root/project/MainApp && 
+      dotnet tool install MainApp --tool-path /bin --configfile /root/project/MainApp/nuget.config && 
+      /bin/bash"
+    tty: true
+  watch:
+    image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
+    container_name: "watch"
+    volumes:
+      - ./project:/project
+    command: >
+      bash -c 
+      "cp -rf /project /root &&
+      cd /root/project/WatchApp && 
+      dotnet publish -c Release -o ./publish && 
+      cd publish && 
+      dotnet WatchApp.dll"
+    restart: always
+  eventstore:
+    image: eventstore/eventstore
+    container_name: "eventstore"
+    environment:
+     - "EVENTSTORE_RUN_PROJECTIONS=All"
+     - "EVENTSTORE_START_STANDARD_PROJECTIONS=true"
+    ports:
+     - "2113:2113"
+     - target: 1113
+       published: 1113
+       protocol: tcp
+       mode: host
+  mariadb:
+    image: mariadb/server:10.3
+    container_name: "mariadb"
+    ports:
+     - "3306:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: "snapshots"
+    hostname: mariadb
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: always
+    user: root
+#    volumes:
+#      - data:/var/lib/mysql
