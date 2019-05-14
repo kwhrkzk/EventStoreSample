@@ -7,20 +7,31 @@ using System.Threading.Tasks;
 using Utf8Json;
 using Microsoft.Extensions.Logging;
 using Application;
+using Unity;
 
 namespace EventStore
 {
-    public class 本を延長する: I本を延長する
+    public class 本を延長するCommand: I本を延長するCommand
     {
-        private ILogger<I本を延長する> Logger { get; }
-#if DEBUG
-        private UserCredentials UserCredentials { get; } = new UserCredentials("admin", "changeit");
-        private Uri EventStoreUri { get; } = new Uri("tcp://localhost:1113");
-#else
-        private UserCredentials UserCredentials { get; } = new UserCredentials("admin", "changeit");
-        private Uri EventStoreUri { get; } = new Uri("tcp://eventstore:1113");
-#endif
-        public 本を延長する(ILogger<I本を延長する> _logger)
+        public 本のID 本のID { get; }
+        public long 本のEventNumber { get; }
+        public 貸出期間 貸出期間 { get; }
+
+        [InjectionConstructor]public 本を延長するCommand(){}
+        public 本を延長するCommand(本のID _本のID, long _本のEventNumber, 貸出期間 _貸出期間)
+        {
+            本のID = _本のID;
+            本のEventNumber = _本のEventNumber;
+            貸出期間 = _貸出期間;
+        }
+        public I本を延長するCommand Create(本のID _本のID, long _本のEventNumber, 貸出期間 _貸出期間)
+        => new 本を延長するCommand(_本のID, _本のEventNumber, _貸出期間);
+    }
+
+    public class 本を延長するCommandHandler: I本を延長するCommandHandler
+    {
+        private ILogger<I本を延長するCommandHandler> Logger { get; }
+        public 本を延長するCommandHandler(ILogger<I本を延長するCommandHandler> _logger)
         {
             Logger = _logger;
         }
@@ -36,40 +47,43 @@ namespace EventStore
             return _本;
         }
 
-        public async Task ExecuteAsync(本のID _本のID, long _本のEventNumber, 貸出期間 _貸出期間)
+        public async Task HandleAsync(ICommand _command)
         {
-            using(var c = EventStoreConnection.Create(
-                ConnectionSettings.Create()
-                    .SetDefaultUserCredentials(UserCredentials)
-                    .UseConsoleLogger()
-                , EventStoreUri))
+            if (_command is I本を延長するCommand cmd)
             {
-                await c.ConnectAsync();
-
-                var _本 = await 本を延長するAsync(c, _本のID, _本のEventNumber, _貸出期間);
-
-                var 本trans = await c.StartTransactionAsync(_本.GUID文字列, _本のEventNumber);
-
-                try
+                using(var c = EventStoreConnection.Create(
+                    ConnectionSettings.Create()
+                        .SetDefaultUserCredentials(Connection.UserCredentials())
+                        .UseConsoleLogger()
+                    , Connection.EventStoreUri()))
                 {
-                    await 本trans.WriteAsync(new EventData(
-                        Guid.NewGuid(),
-                        typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
-                        true,
-                        JsonSerializer.Serialize(_本.Convert()),
-                        new byte[]{}
-                    ));
+                    await c.ConnectAsync();
 
-                    await 本trans.CommitAsync();
+                    var _本 = await 本を延長するAsync(c, cmd.本のID, cmd.本のEventNumber, cmd.貸出期間);
+
+                    var 本trans = await c.StartTransactionAsync(cmd.本のID.ID文字列, cmd.本のEventNumber);
+
+                    try
+                    {
+                        await 本trans.WriteAsync(new EventData(
+                            Guid.NewGuid(),
+                            typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
+                            true,
+                            JsonSerializer.Serialize(_本.Convert()),
+                            new byte[]{}
+                        ));
+
+                        await 本trans.CommitAsync();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Logger.LogError(ex.Message);
+
+                        本trans.Rollback();
+                    }
+
+                    c.Close();
                 }
-                catch (System.Exception ex)
-                {
-                    Logger.LogError(ex.Message);
-
-                    本trans.Rollback();
-                }
-
-                c.Close();
             }
         }
     }

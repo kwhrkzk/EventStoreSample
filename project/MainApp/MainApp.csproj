@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="MicrobatchFramework" Version="1.2.0" />
+    <PackageReference Include="ReactiveProperty" Version="5.4.0" />
     <PackageReference Include="Unity.Microsoft.DependencyInjection" Version="5.10.2" />
   </ItemGroup>
 

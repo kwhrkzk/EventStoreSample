@@ -7,20 +7,35 @@ using System.Threading.Tasks;
 using Utf8Json;
 using Microsoft.Extensions.Logging;
 using Application;
+using Unity;
 
 namespace EventStore
 {
-    public class 本を返す: I本を返す
+    public class 本を返すCommand : I本を返すCommand
     {
-        private ILogger<I本を返す> Logger { get; }
-#if DEBUG
-        private UserCredentials UserCredentials { get; } = new UserCredentials("admin", "changeit");
-        private Uri EventStoreUri { get; } = new Uri("tcp://localhost:1113");
-#else
-        private UserCredentials UserCredentials { get; } = new UserCredentials("admin", "changeit");
-        private Uri EventStoreUri { get; } = new Uri("tcp://eventstore:1113");
-#endif
-        public 本を返す(ILogger<I本を返す> _logger)
+        public 利用者のID 利用者のID { get; }
+        public long 利用者のEventNumber { get; }
+        public 本のID 本のID { get; }
+        public long 本のEventNumber { get; }
+
+        [InjectionConstructor]public 本を返すCommand() { }
+
+        public 本を返すCommand(利用者のID _利用者のID, long _利用者のEventNumber, 本のID _本のID, long _本のEventNumber)
+        {
+            利用者のID = _利用者のID;
+            利用者のEventNumber = _利用者のEventNumber;
+            本のID = _本のID;
+            本のEventNumber = _本のEventNumber;
+        }
+        public I本を返すCommand Create(利用者のID _利用者のID, long _利用者のEventNumber, 本のID _本のID, long _本のEventNumber)
+        => new 本を返すCommand(_利用者のID, _利用者のEventNumber, _本のID, _本のEventNumber);
+    }
+
+    public class 本を返すCommandHandler : I本を返すCommandHandler
+    {
+        private ILogger<I本を返すCommandHandler> Logger { get; }
+
+        public 本を返すCommandHandler(ILogger<I本を返すCommandHandler> _logger)
         {
             Logger = _logger;
         }
@@ -30,7 +45,7 @@ namespace EventStore
             var result = await c.ReadEventAsync(_本のID.ID文字列, _本のEventNumber, true);
 
             var _本 = JsonSerializer.Deserialize<本DTO>(result.Event.Value.Event.Data).Convert();
-            
+
             _本.貸出期間 = 貸出期間.Empty();
             _本.利用者のID = 利用者のID.Empty();
 
@@ -48,52 +63,55 @@ namespace EventStore
             return _利用者;
         }
 
-        public async Task ExecuteAsync(利用者のID _利用者のID, long _利用者のEventNumber, 本のID _本のID, long _本のEventNumber)
+        public async Task HandleAsync(ICommand _command)
         {
-            using(var c = EventStoreConnection.Create(
-                ConnectionSettings.Create()
-                    .SetDefaultUserCredentials(UserCredentials)
-                    .UseConsoleLogger()
-                , EventStoreUri))
+            if (_command is I本を返すCommand cmd)
             {
-                await c.ConnectAsync();
-
-                var _利用者 = await 本を返すAsync(c, _利用者のID, _利用者のEventNumber, _本のID);
-                var _本 = await 本を返すAsync(c, _本のID, _本のEventNumber);
-
-                var 利用者trans = await c.StartTransactionAsync(_利用者.GUID文字列, _利用者のEventNumber);
-                var 本trans = await c.StartTransactionAsync(_本.GUID文字列, _本のEventNumber);
-
-                try
+                using (var c = EventStoreConnection.Create(
+                    ConnectionSettings.Create()
+                        .SetDefaultUserCredentials(Connection.UserCredentials())
+                        .UseConsoleLogger()
+                    , Connection.EventStoreUri()))
                 {
-                    await 利用者trans.WriteAsync(new EventData(
-                        Guid.NewGuid(),
-                        typeof(利用者DTO).FullName + "," + typeof(利用者DTO).Assembly.FullName,
-                        true,
-                        JsonSerializer.Serialize(_利用者.Convert()),
-                        new byte[]{}
-                    ));
+                    await c.ConnectAsync();
 
-                    await 本trans.WriteAsync(new EventData(
-                        Guid.NewGuid(),
-                        typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
-                        true,
-                        JsonSerializer.Serialize(_本.Convert()),
-                        new byte[]{}
-                    ));
+                    var _利用者 = await 本を返すAsync(c, cmd.利用者のID, cmd.利用者のEventNumber, cmd.本のID);
+                    var _本 = await 本を返すAsync(c, cmd.本のID, cmd.本のEventNumber);
 
-                    await 利用者trans.CommitAsync();
-                    await 本trans.CommitAsync();
+                    var 利用者trans = await c.StartTransactionAsync(cmd.利用者のID.ID文字列, cmd.利用者のEventNumber);
+                    var 本trans = await c.StartTransactionAsync(cmd.本のID.ID文字列, cmd.本のEventNumber);
+
+                    try
+                    {
+                        await 利用者trans.WriteAsync(new EventData(
+                            Guid.NewGuid(),
+                            typeof(利用者DTO).FullName + "," + typeof(利用者DTO).Assembly.FullName,
+                            true,
+                            JsonSerializer.Serialize(_利用者.Convert()),
+                            new byte[] { }
+                        ));
+
+                        await 本trans.WriteAsync(new EventData(
+                            Guid.NewGuid(),
+                            typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
+                            true,
+                            JsonSerializer.Serialize(_本.Convert()),
+                            new byte[] { }
+                        ));
+
+                        await 利用者trans.CommitAsync();
+                        await 本trans.CommitAsync();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Logger.LogError(ex.Message);
+
+                        利用者trans.Rollback();
+                        本trans.Rollback();
+                    }
+
+                    c.Close();
                 }
-                catch (System.Exception ex)
-                {
-                    Logger.LogError(ex.Message);
-
-                    利用者trans.Rollback();
-                    本trans.Rollback();
-                }
-
-                c.Close();
             }
         }
     }

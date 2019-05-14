@@ -8,6 +8,9 @@ using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 using Domain;
 using Application;
+using Reactive.Bindings;
+using Reactive.Bindings.Extensions;
+using Reactive.Bindings.Notifiers;
 
 namespace MainApp
 {
@@ -16,40 +19,49 @@ namespace MainApp
         private I本Factory 本Factory { get; }
         private I書籍Factory 書籍Factory { get; }
         private I利用者Factory 利用者Factory { get; }
-        private I利用者を登録する 利用者を登録するCommand { get; }
-        private I本を登録する 本を登録するCommand { get; }
         private Iログイン情報Query ログイン情報Query { get; }
         private I本の状況Query 本の状況Query { get; }
-        private I本を借りる 本を借りるCommand { get; }
-        private I本を延長する 本を延長するCommand { get; }
-        private I本を返す 本を返すCommand { get; }
-        private I本を破棄する 本を破棄するCommand { get; }
+        private ICommandBus CommandBus { get; }
+        private I利用者を登録するCommand 利用者を登録するCommand { get; }
+        private I本を登録するCommand 本を登録するCommand { get; }
+        private I本を登録する2Command 本を登録する2Command { get; }
+        private I本を借りるCommand 本を借りるCommand { get; }
+        private I本を延長するCommand 本を延長するCommand { get; }
+        private I本を返すCommand 本を返すCommand { get; }
+        private I本を破棄するCommand 本を破棄するCommand { get; }
+        private IMessageBroker MessageBroker { get; }
 
         public Scenario(
             I本Factory _本Factory,
             I書籍Factory _書籍Factory,
             I利用者Factory _利用者Factory,
-            I利用者を登録する _利用者を登録する,
-            I本を登録する _本を登録する,
             Iログイン情報Query _ログイン情報Query,
             I本の状況Query _本の状況Query,
-            I本を借りる _本を借りる,
-            I本を延長する _本を延長する,
-            I本を返す _本を返す,
-            I本を破棄する _本を破棄する
+            ICommandBus _commandBus,
+            I利用者を登録するCommand _利用者を登録するCommand,
+            I本を登録するCommand _本を登録するCommand,
+            I本を登録する2Command _本を登録する2Command,
+            I本を借りるCommand _本を借りるCommand,
+            I本を延長するCommand _I本を延長するCommand,
+            I本を返すCommand _本を返すCommand,
+            I本を破棄するCommand _本を破棄するCommand,
+            IMessageBroker _messageBroker
             )
         {
             本Factory = _本Factory;
             書籍Factory = _書籍Factory;
             利用者Factory = _利用者Factory;
-            利用者を登録するCommand = _利用者を登録する;
-            本を登録するCommand = _本を登録する;
             ログイン情報Query = _ログイン情報Query;
             本の状況Query = _本の状況Query;
-            本を借りるCommand = _本を借りる;
-            本を延長するCommand = _本を延長する;
-            本を返すCommand = _本を返す;
-            本を破棄するCommand = _本を破棄する;
+            CommandBus = _commandBus;
+            利用者を登録するCommand = _利用者を登録するCommand;
+            本を登録するCommand = _本を登録するCommand;
+            本を登録する2Command = _本を登録する2Command;
+            本を借りるCommand = _本を借りるCommand;
+            本を延長するCommand = _I本を延長するCommand;
+            本を返すCommand = _本を返すCommand;
+            本を破棄するCommand = _本を破棄するCommand;
+            MessageBroker = _messageBroker;
         }
 
         static List<Type> GetBatchTypes()
@@ -104,11 +116,17 @@ namespace MainApp
         [Command("初期値入力")]
         public async Task 初期値入力()
         {
-            await 利用者を登録するCommand.ExecuteAsync("田中", "太郎");
-            await 利用者を登録するCommand.ExecuteAsync("山田", "花子");
+            await CommandBus.ExecuteAsync(利用者を登録するCommand.Create("田中", "太郎"));
+            await CommandBus.ExecuteAsync(利用者を登録するCommand.Create("山田", "花子"));
 
-            var _書籍のID = await 本を登録するCommand.ExecuteAsync(タイトル.Create(".NETのエンタープライズアプリケーションアーキテクチャ 第２版"), ISBN.Create("9784822298487"));
-            await 本を登録するCommand.ExecuteAsync(_書籍のID);
+            var prop = MessageBroker.ToObservable<I本が登録されたEvent>().ToReadOnlyReactivePropertySlim(null);
+
+            await CommandBus.ExecuteAsync(本を登録するCommand.Create(タイトル.Create(".NETのエンタープライズアプリケーションアーキテクチャ 第２版"), ISBN.Create("9784822298487")));
+
+            if (prop.Value == null)
+                await prop;
+
+            await CommandBus.ExecuteAsync(本を登録する2Command.Create(prop.Value.書籍のID));
         }
 
         [Command("本を借りる")]
@@ -125,8 +143,7 @@ namespace MainApp
             }
 
             var _貸出期間 = 貸出期間.デフォルト期間(DateTime.UtcNow);
-
-            await 本を借りるCommand.ExecuteAsync(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber, _貸出期間);
+            await CommandBus.ExecuteAsync(本を借りるCommand.Create(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber, _貸出期間));
         }
 
         [Command("本を延長する")]
@@ -140,7 +157,7 @@ namespace MainApp
 
                 var _貸出期間 = item.貸出期間.延長(TimeSpan.FromDays(14));
 
-                await 本を延長するCommand.ExecuteAsync(item.本のID, item.本のEventNumber, _貸出期間);
+                await CommandBus.ExecuteAsync(本を延長するCommand.Create(item.本のID, item.本のEventNumber, _貸出期間));
             }
             catch (System.Exception)
             {
@@ -157,7 +174,7 @@ namespace MainApp
             {
                 var item = 本の状況Query.借りてる本(ログイン情報.ID).First();
 
-                await 本を返すCommand.ExecuteAsync(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber);
+                await CommandBus.ExecuteAsync(本を返すCommand.Create(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber));
             }
             catch (System.Exception)
             {
@@ -176,7 +193,7 @@ namespace MainApp
                 return;
             }
 
-            await 本を破棄するCommand.ExecuteAsync(item.本のID, item.本のEventNumber);
+            await CommandBus.ExecuteAsync(本を破棄するCommand.Create(item.本のID, item.本のEventNumber));
         }
     }
 }
