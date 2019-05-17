@@ -1,12 +1,13 @@
 
 using System;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using System.Collections.Generic;
 using Utf8Json;
 
-namespace Application
+namespace RentalUsecase
 {
     public class ログイン情報DTO
     {

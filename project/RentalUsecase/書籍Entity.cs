@@ -1,11 +1,12 @@
 using System;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
-namespace Application
+namespace RentalUsecase
 {
     public class 書籍Entity
     {

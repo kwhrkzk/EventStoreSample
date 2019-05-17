@@ -2,13 +2,14 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using Microsoft.EntityFrameworkCore;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
-namespace Application
+namespace RentalUsecase
 {
-    public class MyContext : DbContext
+    public class RentalProjectorContext : DbContext
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -18,7 +19,7 @@ namespace Application
 #if DEBUG
                 .UseMySql("Server=localhost;Port=3306;Username=root;Password=root;Database=snapshots");
 #else
-                .UseMySql("Server=mariadb;Port=3306;Username=root;Password=root;Database=snapshots");
+                .UseMySql("Server=rental_projection;Port=3306;Username=root;Password=root;Database=snapshots");
 #endif
         }
         public DbSet<本Entity> 本一覧 { get; set; }

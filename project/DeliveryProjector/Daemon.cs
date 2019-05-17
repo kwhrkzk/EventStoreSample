@@ -9,7 +9,8 @@ using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 using Unity;
 using Unity.Microsoft.DependencyInjection;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.DeliverySubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using EventStore.ClientAPI.PersistentSubscriptions;
@@ -17,10 +18,11 @@ using System.Net;
 using System.Collections.Generic;
 using System.Reflection;
 using Utf8Json;
-using Application;
+using DeliveryUsecase;
 using System.Diagnostics;
+using DeliveryProjector;
 
-namespace WatchApp
+namespace DeliveryProjector
 {
     public class Daemon : BatchBase
     {
@@ -36,19 +38,18 @@ namespace WatchApp
         private IPEndPoint EventStoreIPEndPoint { get; set; }
 #endif
 
+        private IEventStoreConnection Conn { get; set; }
+
         private I本Repository 本Repository { get; }
-        private I書籍Repository 書籍Repository { get; }
-        private I利用者Repository 利用者Repository { get; }
+        private I本Factory 本Factory { get; }
 
         public Daemon(
             I本Repository _本Repository,
-            I書籍Repository _書籍Repository,
-            I利用者Repository _利用者Repository
+            I本Factory _本Factory
             )
         {
             本Repository = _本Repository;
-            書籍Repository = _書籍Repository;
-            利用者Repository = _利用者Repository;
+            本Factory = _本Factory;
         }
 
         private List<(EventStorePersistentSubscriptionBase b, PersistentSubscriptionDetails d)> SubscribeList { get; } = new List<(EventStorePersistentSubscriptionBase b, PersistentSubscriptionDetails d)>();
@@ -61,7 +62,7 @@ namespace WatchApp
             EventStoreIPEndPoint = new IPEndPoint((System.Net.Dns.GetHostEntry("eventstore").AddressList)[0], 2113);
 #endif
 
-            IEventStoreConnection conn = await GetConnectionAsync();
+            Conn = await GetConnectionAsync();
 
             try
             {
@@ -71,19 +72,33 @@ namespace WatchApp
                 {
                     List<PersistentSubscriptionDetails> list = await ps.List(UserCredentials);
 
-                    foreach (var detail in list)
+                    foreach (PersistentSubscriptionDetails detail in list)
                     {
+                        if (Judge(detail.GroupName) == false)
+                            continue;
+
                         if (SubscribeList.Exists(tpl => tpl.d.EventStreamId.Equals(detail.EventStreamId)))
                             continue;
 
                         Context.Logger.LogInformation(detail.EventStreamId);
 
-                        EventStorePersistentSubscriptionBase _base = conn.ConnectToPersistentSubscription(detail.EventStreamId, detail.GroupName, Subscribed);
+                        EventStorePersistentSubscriptionBase _base =
+                            Conn.ConnectToPersistentSubscription(
+                                detail.EventStreamId, 
+                                detail.GroupName, 
+                                Subscribed,
+                                (_base, _reason, ex) => Context.Logger.LogError($"Reason = {Enum.GetName(typeof(SubscriptionDropReason), _reason)}: {ex.Message}"),
+                                UserCredentials,
+                                1,
+                                false
+                                );
                         SubscribeList.Add((_base, detail));
 
-                        EventReadResult ret = await conn.ReadEventAsync(detail.EventStreamId, detail.LastKnownEventNumber, false);
-
-                         Execute(ret.Event.Value.Event);
+                        StreamEventsSlice ret = await Conn.ReadStreamEventsForwardAsync(detail.EventStreamId, 0, (int)(detail.TotalItemsProcessed + 1) , false);
+                        foreach (ResolvedEvent _event in ret.Events)
+                        {
+                            await ExecuteAsync(_event.Event);
+                        }
                     }
 
                     // wait for next time
@@ -96,10 +111,9 @@ namespace WatchApp
             }
             finally
             {
-                // you can write cleanup code here.
+                Conn.Close();
             }
         }
-
         private async Task<IEventStoreConnection> GetConnectionAsync()
         {
             while (!Context.CancellationToken.IsCancellationRequested)
@@ -131,62 +145,74 @@ namespace WatchApp
             return null;
         }
 
-        private Task Subscribed(EventStorePersistentSubscriptionBase _base, ResolvedEvent _event, int? _)
+        private async Task Subscribed(EventStorePersistentSubscriptionBase _base, ResolvedEvent _event, int? _)
         {
             Context.Logger.LogInformation(_event.Event.EventStreamId);
 
-            Execute(_event.Event);
-
-            return Task.CompletedTask;
+            await ExecuteAsync(_event.Event);
         }
 
-        private void Execute(RecordedEvent _event)
-        {
-            var obj = JsonSerializer.NonGeneric.Deserialize(Type.GetType(_event.EventType, true), _event.Data);
+        private bool Judge(string _groupname)
+        => _groupname switch {
+            Domain.GeneralSubDomain.Aggregate.Book => true,
+            _ => false
+        };
 
-            var x = obj switch {
-                本DTO dto => Execute本DTO(_event, dto.Convert()),
-                書籍DTO dto => Execute書籍DTO(_event, dto.Convert()),
-                利用者DTO dto => Execute利用者DTO(_event, dto.Convert()),
-                _ => throw new ArgumentException("ArgumentException: " + _event.EventType)
+        private async Task ExecuteAsync(RecordedEvent _event)
+        {
+            var x = _event.EventType switch {
+                Domain.RentalSubDomain.Events.Book.LendedBookVer100 => await LendedBookVer100Async(_event),
+                Domain.RentalSubDomain.Events.Book.ReturnedBookVer100 => ReturnedBookVer100(_event),
+                Domain.DeliverySubDomain.Events.Book.ShippedBookVer100 => ShippedBookVer100(_event),
+                _ => 0
             };
         }
-        private int Execute本DTO(RecordedEvent _event, 本 _本)
-        {
-            if (_event.Data.Any() == false)
-                本Repository.Delete(本のID.Create(_event.EventStreamId));
-            else
-            {
-                本Repository.Upsert(_event.EventNumber, _本);
 
-                using (var db = new MyContext())
-                {
-                    if (db.本一覧.SingleOrDefault(x => x.Id.Equals(_本.GUID)) is 本Entity x)
-                        Context.Logger.LogInformation(System.Text.Encoding.UTF8.GetString((JsonSerializer.Serialize(x))));
-                }
+        private async Task<int> LendedBookVer100Async(RecordedEvent _event)
+        {
+            var dto = JsonSerializer.Deserialize<Domain.RentalSubDomain.Events.Book.LendedBookDTOVer100>(_event.Data);
+
+            EventReadResult ret = await Conn.ReadEventAsync(dto.id, 0, false);
+
+            var first = JsonSerializer.Deserialize<Domain.RentalSubDomain.Events.Book.AddedBookDTOVer100>(ret.Event.Value.Event.Data);
+            
+            var _本 = 本Factory.Create(dto.id, first.book_id, dto.user_id);
+
+            本Repository.Insert(_本);
+
+            using (var db = new DeliveryProjectorContext())
+            {
+                if (db.本一覧.SingleOrDefault(x => x.Id.Equals(Guid.Parse(dto.id))) is 本Entity x)
+                    Context.Logger.LogInformation(System.Text.Encoding.UTF8.GetString((JsonSerializer.Serialize(x))));
             }
             
             return 0;
         }
-        private int Execute書籍DTO(RecordedEvent _event, 書籍 _書籍)
-        {
-            書籍Repository.Upsert(_event.EventNumber, _書籍);
 
-            using (var db = new MyContext())
+        private int ShippedBookVer100(RecordedEvent _event)
+        {
+            var dto = JsonSerializer.Deserialize<Domain.DeliverySubDomain.Events.Book.ShippedBookDTOVer100>(_event.Data);
+
+            本Repository.Update(_event.EventNumber, dto);
+
+            using (var db = new DeliveryProjectorContext())
             {
-                if (db.書籍一覧.SingleOrDefault(x => x.Id.Equals(_書籍.GUID)) is 書籍Entity x)
+                if (db.本一覧.SingleOrDefault(x => x.Id.Equals(Guid.Parse(dto.id))) is 本Entity x)
                     Context.Logger.LogInformation(System.Text.Encoding.UTF8.GetString((JsonSerializer.Serialize(x))));
             }
-
+            
             return 0;
         }
-        private int Execute利用者DTO(RecordedEvent _event, 利用者 _利用者)
-        {
-            利用者Repository.Upsert(_event.EventNumber, _利用者);
 
-            using (var db = new MyContext())
+        private int ReturnedBookVer100(RecordedEvent _event)
+        {
+            var dto = JsonSerializer.Deserialize<Domain.RentalSubDomain.Events.Book.ReturnedBookDTOVer100>(_event.Data);
+
+            本Repository.Delete(dto.id);
+
+            using (var db = new DeliveryProjectorContext())
             {
-                if (db.利用者一覧.SingleOrDefault(x => x.Id.Equals(_利用者.GUID)) is 利用者Entity x)
+                if (db.本一覧.SingleOrDefault(x => x.Id.Equals(Guid.Parse(dto.id))) is 本Entity x)
                     Context.Logger.LogInformation(System.Text.Encoding.UTF8.GetString((JsonSerializer.Serialize(x))));
             }
 

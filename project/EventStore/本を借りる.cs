@@ -1,12 +1,13 @@
 using System;
 using System.Text;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using System.Threading.Tasks;
 using Utf8Json;
 using Microsoft.Extensions.Logging;
-using Application;
+using RentalUsecase;
 using Unity;
 
 namespace EventStore
@@ -41,79 +42,63 @@ namespace EventStore
             Logger = _logger;
         }
 
-        private async Task<本> 本を借りるAsync(IEventStoreConnection c, 本のID _本のID, long _本のEventNumber, 利用者のID _利用者のID, 貸出期間 _貸出期間)
-        {
-            var result = await c.ReadEventAsync(_本のID.ID文字列, _本のEventNumber, true);
-
-            var _本 = JsonSerializer.Deserialize<本DTO>(result.Event.Value.Event.Data).Convert();
-
-            _本.貸出期間 = _貸出期間;
-            _本.利用者のID = _利用者のID;
-
-            return _本;
-        }
-
-        private async Task<利用者> 本を借りるAsync(IEventStoreConnection c, 利用者のID _利用者のID, long _利用者のEventNumber, 本のID _本のID)
-        {
-            var result = await c.ReadEventAsync(_利用者のID.ID文字列, _利用者のEventNumber, true);
-
-            var _利用者 = JsonSerializer.Deserialize<利用者DTO>(result.Event.Value.Event.Data).Convert();
-
-            _利用者.本を借りる(_本のID);
-
-            return _利用者;
-        }
-
         public async Task HandleAsync(ICommand _command)
         {
-            if (_command is I本を借りるCommand cmd)
+            var cmd = _command as I本を借りるCommand;
+            if (cmd == null)
+                throw new ArgumentException(nameof(_command), "I本を借りるCommand型ではありません。");
+
+            var 利用者EventData =
+                new EventData(
+                    Guid.NewGuid(),
+                    Domain.RentalSubDomain.Events.User.LendedBookVer100,
+                    true,
+                    JsonSerializer.Serialize(Domain.RentalSubDomain.Events.User.LendedBookDTOVer100.Create(cmd.利用者のID.ID文字列, cmd.本のID.ID文字列)),
+                    new byte[] { }
+                );
+
+            var 本EventData =
+                new EventData(
+                    Guid.NewGuid(),
+                    Domain.RentalSubDomain.Events.Book.LendedBookVer100,
+                    true,
+                    JsonSerializer.Serialize(
+                        Domain.RentalSubDomain.Events.Book.LendedBookDTOVer100.Create(
+                            cmd.本のID.ID文字列, 
+                            cmd.利用者のID.ID文字列, 
+                            cmd.貸出期間.貸出期間自DateTime, 
+                            cmd.貸出期間.貸出期間至DateTime
+                        )
+                    ),
+                    new byte[] { }
+                );
+
+            using (var c = EventStoreConnection.Create(
+                ConnectionSettings.Create()
+                    .SetDefaultUserCredentials(Connection.UserCredentials())
+                    // .UseConsoleLogger()
+                , Connection.EventStoreUri()))
             {
-                using (var c = EventStoreConnection.Create(
-                    ConnectionSettings.Create()
-                        .SetDefaultUserCredentials(Connection.UserCredentials())
-                        .UseConsoleLogger()
-                    , Connection.EventStoreUri()))
+                try
                 {
                     await c.ConnectAsync();
 
-                    var _利用者 = await 本を借りるAsync(c, cmd.利用者のID, cmd.利用者のEventNumber, cmd.本のID);
-                    var _本 = await 本を借りるAsync(c, cmd.本のID, cmd.本のEventNumber, cmd.利用者のID, cmd.貸出期間);
+                    ConditionalWriteResult 利用者Result = await c.ConditionalAppendToStreamAsync(cmd.利用者のID.ID文字列, ExpectedVersion.Any, new []{利用者EventData});
+                    ConditionalWriteResult 本Result = await c.ConditionalAppendToStreamAsync(cmd.本のID.ID文字列, ExpectedVersion.Any, new []{本EventData});
 
-                    var 利用者trans = await c.StartTransactionAsync(cmd.利用者のID.ID文字列, cmd.利用者のEventNumber);
-                    var 本trans = await c.StartTransactionAsync(cmd.本のID.ID文字列, cmd.本のEventNumber);
-
-                    // 遅延疑似.
-                    await Task.Delay(TimeSpan.FromSeconds(5));
-
-                    try
+                    if (ConditionalWriteStatus.Succeeded.Equals(利用者Result.Status) &&
+                        ConditionalWriteStatus.Succeeded.Equals(本Result.Status))
                     {
-                        await 利用者trans.WriteAsync(new EventData(
-                            Guid.NewGuid(),
-                            typeof(利用者DTO).FullName + "," + typeof(利用者DTO).Assembly.FullName,
-                            true,
-                            JsonSerializer.Serialize(_利用者.Convert()),
-                            new byte[] { }
-                        ));
-
-                        await 本trans.WriteAsync(new EventData(
-                            Guid.NewGuid(),
-                            typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
-                            true,
-                            JsonSerializer.Serialize(_本.Convert()),
-                            new byte[] { }
-                        ));
-
-                        await 利用者trans.CommitAsync();
-                        await 本trans.CommitAsync();
+                        await c.AppendToStreamAsync(cmd.利用者のID.ID文字列, ExpectedVersion.Any, new []{利用者EventData});
+                        await c.AppendToStreamAsync(cmd.本のID.ID文字列, ExpectedVersion.Any, new []{本EventData});
                     }
-                    catch (System.Exception ex)
+                    else
                     {
-                        Logger.LogError(ex.Message);
-
-                        利用者trans.Rollback();
-                        本trans.Rollback();
+                        Logger.LogError($"利用者Result.Status = {Enum.GetName(typeof(ConditionalWriteStatus), 利用者Result.Status)}, 本Result.Status = {Enum.GetName(typeof(ConditionalWriteStatus), 本Result.Status)}");
                     }
-
+                }
+                finally
+                {
                     c.Close();
                 }
             }

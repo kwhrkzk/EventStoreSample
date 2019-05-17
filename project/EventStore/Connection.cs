@@ -1,12 +1,13 @@
 using System;
 using System.Text;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using System.Threading.Tasks;
 using Utf8Json;
 using Microsoft.Extensions.Logging;
-using Application;
+using RentalUsecase;
 using Unity;
 
 namespace EventStore

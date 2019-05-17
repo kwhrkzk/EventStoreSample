@@ -8,15 +8,31 @@ using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 using Unity;
 using Unity.Microsoft.DependencyInjection;
-using Domain;
-using Application;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
+using RentalUsecase;
 using Factory;
 using EventStore;
 using Query;
 using Reactive.Bindings.Notifiers;
+using Unity.Injection;
 
-namespace MainApp
+namespace RentalApp
 {
+    public class CommandBusDecorator: ICommandBus
+    {
+        private ICommandBus CommandBus { get; }
+        public CommandBusDecorator(ICommandBus _commandBus) 
+        {
+             CommandBus = _commandBus; 
+        }
+        public async Task ExecuteAsync(ICommand _command)
+        {
+            // コマンド実行前に好きなことする.
+            await CommandBus.ExecuteAsync(_command);
+            // コマンド終了後に好きなことする.
+        }
+    }
     public class Program
     {
         public static async Task<int> Main(string[] args)
@@ -29,14 +45,14 @@ namespace MainApp
                     .UseServiceProviderFactory<IUnityContainer>(new ServiceProviderFactory(new UnityContainer()))
                     .ConfigureContainer<IUnityContainer>((hostContext, container) =>
                     {
-                        
                         container.RegisterInstance<IMessageBroker>(Reactive.Bindings.Notifiers.MessageBroker.Default);
                         container.RegisterInstance<IUnityContainer>(container);
                         container.RegisterType<I書籍Factory, 書籍Factory>();
-                        container.RegisterType<I本Factory, 本Factory>();
+                        container.RegisterType<I本Factory, RentalSubDomain本Factory>();
                         container.RegisterType<I利用者Factory, 利用者Factory>();
 
-                        container.RegisterType<ICommandBus, CommandBus>();
+                        container.RegisterType<CommandBus, CommandBus>();
+                        container.RegisterFactory<ICommandBus>(c => new CommandBusDecorator(c.Resolve<CommandBus>()));
                         container.RegisterType<I利用者を登録するCommandHandler, 利用者を登録するCommandHandler>();
                         container.RegisterType<I利用者を登録するCommand, 利用者を登録するCommand>();
                         container.RegisterType<I本を登録するCommandHandler, 本を登録するCommandHandler>();

@@ -4,19 +4,25 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <LangVersion>preview</LangVersion>
+    <PackAsTool>true</PackAsTool>
+    <Useapphost>false</Useapphost>
+    <ToolCommandName>usecase</ToolCommandName>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="EventStore.Client" Version="5.0.1" />
     <PackageReference Include="MicrobatchFramework" Version="1.2.0" />
+    <PackageReference Include="ReactiveProperty" Version="5.4.0" />
     <PackageReference Include="Unity.Microsoft.DependencyInjection" Version="5.10.2" />
+    <PackageReference Include="Utf8Json.FSharpExtensions" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Domain\Domain.fsproj" />
-    <ProjectReference Include="..\Application\Application.csproj" />
-    <ProjectReference Include="..\EntityFramework\EntityFramework.csproj" />
     <ProjectReference Include="..\Factory\Factory.csproj" />
+    <ProjectReference Include="..\EventStore\EventStore.csproj" />
+    <ProjectReference Include="..\RentalUsecase\RentalUsecase.csproj" />
+    <ProjectReference Include="..\Query\Query.csproj" />
+    <ProjectReference Include="..\EntityFramework\EntityFramework.csproj" />
   </ItemGroup>
 
 </Project>

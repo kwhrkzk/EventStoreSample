@@ -2,9 +2,10 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using Microsoft.EntityFrameworkCore;
-using Application;
+using RentalUsecase;
 
 namespace EntityFramework
 {
@@ -12,7 +13,7 @@ namespace EntityFramework
     {
         public void Upsert(long _eventNumber, 書籍 _書籍)
         {
-            using (var db = new MyContext())
+            using (var db = new RentalProjectorContext())
             {
                 db.Database.EnsureCreated();
 

@@ -2,9 +2,10 @@ using System;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using Microsoft.EntityFrameworkCore;
-using Application;
+using RentalUsecase;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Query
@@ -22,7 +23,7 @@ namespace Query
 
         public ログイン情報DTO First()
         {
-            using (var db = new MyContext())
+            using (var db = new RentalProjectorContext())
             {
                 return db.利用者一覧.Select(Convert).First();
             }

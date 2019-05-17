@@ -2,7 +2,8 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Utf8Json;
 
-namespace Application
+namespace RentalUsecase
 {
     public class 利用者Entity
     {
@@ -45,12 +46,25 @@ namespace Application
 
     public static class 利用者EntityExtensions
     {
+        public static void Copy(this 利用者Entity item, long _eventNumber, Domain.RentalSubDomain.Events.User.LendedBookDTOVer100 _dto)
+        {
+            item.EventNumber = _eventNumber;
+            item.本一覧.Add(Guid.Parse(_dto.book_id));
+            item.本一覧 = new List<Guid>(item.本一覧.Distinct());
+        }
+
+        public static void Copy(this 利用者Entity item, long _eventNumber, Domain.RentalSubDomain.Events.User.ReturnedBookDTOVer100 _dto)
+        {
+            item.EventNumber = _eventNumber;
+            item.本一覧 = new List<Guid>(item.本一覧.Where(id => id.Equals(Guid.Parse(_dto.book_id)) == false).Distinct());
+        }
+
         public static void Copy(this 利用者Entity item, long _eventNumber, 利用者 _利用者)
         {
             item.EventNumber = _eventNumber;
             item.苗字 = _利用者.苗字文字列;
             item.名前 = _利用者.名前文字列;
-            item.本一覧 = new List<Guid>(_利用者.貸出本一覧.Select(x => x.ID));
+            item.本一覧 = new List<Guid>(_利用者.貸出本一覧.Select(x => x.ID).Distinct());
         }
 
         public static 利用者Entity Convert(this 利用者 _利用者, long _eventNumber)

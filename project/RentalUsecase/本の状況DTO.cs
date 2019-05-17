@@ -1,12 +1,13 @@
 
 using System;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using System.Collections.Generic;
 using Utf8Json;
 
-namespace Application
+namespace RentalUsecase
 {
     public class 本の状況DTO
     {
@@ -16,7 +17,7 @@ namespace Application
         public long 書籍のEventNumber { get; set; }
         public タイトル タイトル { get; set; }
         public 貸出期間 貸出期間 { get; set; }
-        public bool 貸し出しされている => Domain.貸出期間.Empty().Equals(貸出期間) == false;
+        public bool 貸し出しされている => Domain.RentalSubDomain.貸出期間.Empty().Equals(貸出期間) == false;
         public 版数 版数 { get; set; }
 
         public string ToJson() => System.Text.Encoding.UTF8.GetString((JsonSerializer.Serialize(this)));
@@ -26,5 +27,6 @@ namespace Application
     {
         IEnumerable<本の状況DTO> All();
         IEnumerable<本の状況DTO> 借りてる本(利用者のID _利用者のID);
+        IEnumerable<本の状況DTO> 借りてない本();
     }
 }

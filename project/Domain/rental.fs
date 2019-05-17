@@ -1,52 +1,11 @@
-﻿namespace Domain
+namespace Domain.RentalSubDomain
 
 open System
 open System.Threading.Tasks
 open Utf8Json
-
-type 書籍のID =
-    {
-        _id: Guid
-    }
-    member this.ID = this._id
-    static member Create(_id:string) = { _id = Guid.Parse(_id) }
-    static member Create(_id:Guid) = { _id = _id }
-    static member New() = { _id = Guid.NewGuid() }
-
-type タイトル =
-    {
-        _タイトル: string
-    }
-    member this.タイトル = match this._タイトル with "" -> "タイトル未設定" | _ -> this._タイトル
-    static member Empty() = { _タイトル = "" }
-    static member Create x = { _タイトル = x }
-
-type ISBN =
-    {
-        _isbn: string
-    }
-    member this.ISBN = this._isbn
-    static member Empty() = { _isbn = "" }
-    static member Create x = { _isbn = x }
-
-type 書籍 (_id, _isbn) =
-    member this.ID: 書籍のID = _id
-    member this.GUID = this.ID.ID
-    member this.GUID文字列 = this.GUID.ToString()
-    member val タイトル = タイトル.Empty() with get, set
-    member this.タイトル文字列 = this.タイトル.タイトル
-    member this.ISBN: ISBN = _isbn
-    member this.ISBN文字列 = this.ISBN.ISBN
-
-type 本のID =
-    {
-        _id: Guid
-    }
-    member this.ID = this._id
-    static member Create(_id:string) = { _id = Guid.Parse(_id) }
-    static member Create(_id:Guid) = { _id = _id }
-    static member New() = { _id = Guid.NewGuid() }
-    member this.ID文字列 = this.ID.ToString()
+open Domain.GeneralSubDomain
+open System.Diagnostics.Tracing
+open System.Runtime.Serialization
 
 type 貸出期間自 =
     {
@@ -95,26 +54,6 @@ type 貸出期間 =
     member this.貸出期間至DateTime = this._貸出期間至._date
     member this.より貸出期間至が後(_貸出期間:貸出期間) = this._貸出期間至 < _貸出期間._貸出期間至
 
-type 版数 =
-    {
-        _版数: int
-    }
-    member this.版数 = this._版数
-    static member Empty = { _版数 = 0 }
-    static member Create x = { _版数 = x }
-    static member 第一版 = { _版数 = 1 }
-
-type 利用者のID =
-    {
-        _id: Guid
-    }
-    member this.ID = this._id
-    member this.ID文字列 = this.ID.ToString()
-    static member Create(_id:string) = match _id with "" -> 利用者のID.Empty() | _id -> { _id = Guid.Parse(_id) }
-    static member Create(_id:Guid) = { _id = _id }
-    static member New() = { _id = Guid.NewGuid() }
-    static member Empty() = { _id = Guid.Empty }
-
 type 本 (_id, _書籍のID) =
     member this.ID: 本のID = _id
     member this.GUID = this.ID.ID
@@ -136,29 +75,6 @@ type 本 (_id, _書籍のID) =
     member val 版数 = 版数.Empty with get, set
     member this.版数Int = this.版数.版数
 
-type 苗字 =
-    {
-        苗字: string
-    }
-    static member Create(_name) = { 苗字 = _name }
-    static member Empty = { 苗字 = "" }
-
-type 名前 =
-    {
-        名前: string
-    }
-    static member Create(_name) = { 名前 = _name }
-    static member Empty = { 名前 = "" }
-type 氏名 =
-    {
-        _苗字: 苗字
-        _名前: 名前
-    }
-    static member Create(_苗字, _名前) = { _苗字 = 苗字.Create(_苗字); _名前 = 名前.Create(_名前) }
-    static member Empty = { _苗字 = 苗字.Empty; _名前 = 名前.Empty }
-    member this.苗字文字列 = this._苗字.苗字
-    member this.名前文字列 = this._名前.名前
-
 type 利用者 (_id) =
     member this.ID: 利用者のID = _id
     member this.GUID = this.ID.ID
@@ -172,21 +88,117 @@ type 利用者 (_id) =
     member this.苗字文字列 = this.氏名.苗字文字列
     member this.名前文字列 = this.氏名.名前文字列
 
-type I書籍Factory =
-    abstract Create: タイトル * ISBN -> 書籍
+module Events =
+    module User =
+        [<Literal>]
+        [<CompiledName "AddedUserVer100">]
+        let addedUserVer100 = "user.addedUserVer1.0.0"
+        type AddedUserDTOVer100 = 
+                {
+                    id: string
+                    last_name: string
+                    first_name: string
+                }
+                static member Create(_id:利用者のID, _苗字:string, _名前:string) = { id = _id.ID文字列; last_name = _苗字; first_name = _名前 }
+
+        [<Literal>]
+        [<CompiledName "LendedBookVer100">]
+        let lendedBookVer100 = "user.lendedBookVer1.0.0"
+        type LendedBookDTOVer100 = 
+                {
+                    id: string
+                    book_id: string
+                }
+                static member Create(a,b) = { id = a; book_id = b }
+
+        [<Literal>]
+        [<CompiledName "ReturnedBookVer100">]
+        let returnedBookVer100 = "user.returnedBookVer1.0.0"
+        type ReturnedBookDTOVer100 = 
+                {
+                    id: string
+                    book_id: string
+                }
+                static member Create(a,b) = { id = a; book_id = b }
+
+    module BookInfo =
+        [<Literal>]
+        [<CompiledName "AddedBookInfoVer100">]
+        let addedBookInfoVer100 = "bookinfo.addedBookInfoVer1.0.0"
+        type AddedBookInfoDTOVer100 = 
+                {
+                    id: string
+                    title: string
+                    isbn: string
+                }
+                static member Create(_id, _title, _isbn) = { id = _id; title = _title; isbn = _isbn }
+
+    module Book =
+        [<Literal>]
+        [<CompiledName "AddedBookVer100">]
+        let addedBookVer100 = "book.addedBookVer1.0.0"
+        type AddedBookDTOVer100 = 
+                {
+                    id: string
+                    book_id: string
+                }
+                static member Create(_id, _書籍のID) = { id = _id; book_id = _書籍のID }
+
+        [<Literal>]
+        [<CompiledName "LendedBookVer100">]
+        let lendedBookVer100 = "book.lendedBookVer1.0.0"
+        type LendedBookDTOVer100 = 
+                {
+                    id: string
+                    user_id: string
+                    lending_start_date: Nullable<DateTime>
+                    lending_end_date: Nullable<DateTime>
+                }
+                static member Create(a,b,c,d) = { id = a; user_id = b; lending_start_date = c; lending_end_date = d }
+
+        [<Literal>]
+        [<CompiledName "ExtendedBookVer100">]
+        let extendedBookVer100 = "book.extendedBookVer1.0.0"
+        type ExtendedBookDTOVer100 = 
+                {
+                    id: string
+                    lending_start_date: Nullable<DateTime>
+                    lending_end_date: Nullable<DateTime>
+                }
+                static member Create(a,b,c) = { id = a; lending_start_date = b; lending_end_date = c }
+
+        [<Literal>]
+        [<CompiledName "ReturnedBookVer100">]
+        let returnedBookVer100 = "book.returnedBookVer1.0.0"
+        type ReturnedBookDTOVer100 = 
+                {
+                    id: string
+                }
+                static member Create(a) = { id = a }
+
+        [<Literal>]
+        [<CompiledName "DestroyedBookVer100">]
+        let destroyedBookVer100 = "book.destroyedBookVer1.0.0"
+        type DestroyedBookDTOVer100 = 
+                {
+                    id: string
+                }
+                static member Create(a) = { id = a }
 
 type I本Factory =
-    abstract Create: 書籍のID -> 本
+    abstract Create: string * string -> 本
 
 type I利用者Factory =
-    abstract Create: string * string -> 利用者
-
-type I本Repository =
-    abstract Upsert: int64 * 本 -> unit
-    abstract Delete: 本のID -> unit
-
-type I書籍Repository =
-    abstract Upsert: int64 * 書籍 -> unit
+    abstract Create: string * string * string -> 利用者
 
 type I利用者Repository =
-    abstract Upsert: int64 * 利用者 -> unit
+    abstract Insert: int64 * 利用者 -> unit
+    abstract Update: int64 * Events.User.LendedBookDTOVer100 -> unit
+    abstract Update: int64 * Events.User.ReturnedBookDTOVer100 -> unit
+
+type I本Repository =
+    abstract Insert: int64 * 本 -> unit
+    abstract Update: int64 * Events.Book.LendedBookDTOVer100 -> unit
+    abstract Update: int64 * Events.Book.ExtendedBookDTOVer100 -> unit
+    abstract Update: int64 * Events.Book.ReturnedBookDTOVer100 -> unit
+    abstract Delete: string -> unit

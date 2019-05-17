@@ -1,41 +1,66 @@
 version: '3.7'
 services:
-  usecase1:
+  rental_usecase1:
     image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
-    container_name: "usecase1"
+    container_name: "rental_usecase1"
     volumes:
       - ./project:/project
     command: >
       bash -c 
       "cp -rf /project /root &&
-      dotnet pack /root/project/MainApp -c Release -o /root/project/MainApp && 
-      dotnet tool install MainApp --tool-path /bin --configfile /root/project/MainApp/nuget.config && 
+      dotnet pack /root/project/RentalApp -c Release -o /root/project/RentalApp && 
+      dotnet tool install RentalApp --tool-path /bin --configfile /root/project/RentalApp/nuget.config && 
       /bin/bash"
     tty: true
-  usecase2:
+  rental_usecase2:
     image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
-    container_name: "usecase2"
+    container_name: "rental_usecase2"
     volumes:
       - ./project:/project
     command: >
       bash -c 
       "cp -rf /project /root &&
-      dotnet pack /root/project/MainApp -c Release -o /root/project/MainApp && 
-      dotnet tool install MainApp --tool-path /bin --configfile /root/project/MainApp/nuget.config && 
+      dotnet pack /root/project/RentalApp -c Release -o /root/project/RentalApp && 
+      dotnet tool install RentalApp --tool-path /bin --configfile /root/project/RentalApp/nuget.config && 
       /bin/bash"
     tty: true
-  watch:
+  delivery_usecase:
     image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
-    container_name: "watch"
+    container_name: "delivery_usecase"
     volumes:
       - ./project:/project
     command: >
       bash -c 
       "cp -rf /project /root &&
-      cd /root/project/WatchApp && 
+      dotnet pack /root/project/DeliveryApp -c Release -o /root/project/DeliveryApp && 
+      dotnet tool install DeliveryApp --tool-path /bin --configfile /root/project/DeliveryApp/nuget.config && 
+      /bin/bash"
+    tty: true
+  rental_projector:
+    image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
+    container_name: "rental_projector"
+    volumes:
+      - ./project:/project
+    command: >
+      bash -c 
+      "cp -rf /project /root &&
+      cd /root/project/RentalProjector && 
       dotnet publish -c Release -o ./publish && 
       cd publish && 
-      dotnet WatchApp.dll"
+      dotnet RentalProjector.dll"
+    restart: always
+  delivery_projector:
+    image: mcr.microsoft.com/dotnet/core/sdk:3.0.100-preview5
+    container_name: "delivery_projector"
+    volumes:
+      - ./project:/project
+    command: >
+      bash -c 
+      "cp -rf /project /root &&
+      cd /root/project/DeliveryProjector && 
+      dotnet publish -c Release -o ./publish && 
+      cd publish && 
+      dotnet DeliveryProjector.dll"
     restart: always
   eventstore:
     image: eventstore/eventstore
@@ -49,17 +74,27 @@ services:
        published: 1113
        protocol: tcp
        mode: host
-  mariadb:
+  rental_projection:
     image: mariadb/server:10.3
-    container_name: "mariadb"
+    container_name: "rental_projection"
     ports:
      - "3306:3306"
     environment:
       MARIADB_ROOT_PASSWORD: root
       MARIADB_DATABASE: "snapshots"
-    hostname: mariadb
+    hostname: rental_projection
     command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: always
     user: root
-#    volumes:
-#      - data:/var/lib/mysql
+  delivery_projection:
+    image: mariadb/server:10.3
+    container_name: "delivery_projection"
+    ports:
+     - "3307:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: "snapshots"
+    hostname: delivery_projection
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: always
+    user: root

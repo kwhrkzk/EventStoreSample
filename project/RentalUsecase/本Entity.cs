@@ -1,11 +1,12 @@
 using System;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 using System.Runtime.Serialization;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
-namespace Application
+namespace RentalUsecase
 {
     public class 本Entity
     {
@@ -35,6 +36,29 @@ namespace Application
             item.貸出期間自 = (_本.貸出なし) ? (DateTime?)null : _本.貸出期間自DateTime;
             item.貸出期間至 = (_本.貸出なし) ? (DateTime?)null : _本.貸出期間至DateTime;
             item.版数 = _本.版数.版数;
+        }
+
+        public static void Copy(this 本Entity item, long _eventNumber, Domain.RentalSubDomain.Events.Book.LendedBookDTOVer100 _dto)
+        {
+            item.EventNumber = _eventNumber;
+            item.利用者EntityId = (Guid?)Guid.Parse(_dto.user_id);
+            item.貸出期間自 = _dto.lending_start_date;
+            item.貸出期間至 = _dto.lending_end_date;
+        }
+
+        public static void Copy(this 本Entity item, long _eventNumber, Domain.RentalSubDomain.Events.Book.ExtendedBookDTOVer100 _dto)
+        {
+            item.EventNumber = _eventNumber;
+            item.貸出期間自 = _dto.lending_start_date;
+            item.貸出期間至 = _dto.lending_end_date;
+        }
+
+        public static void Copy(this 本Entity item, long _eventNumber, Domain.RentalSubDomain.Events.Book.ReturnedBookDTOVer100 _dto)
+        {
+            item.EventNumber = _eventNumber;
+            item.利用者EntityId = (Guid?)null;
+            item.貸出期間自 = (DateTime?)null;
+            item.貸出期間至 = (DateTime?)null;
         }
 
         public static 本Entity Convert(this 本 _本, long _eventNumber)

@@ -1,14 +1,17 @@
 using System;
 using System.Text;
 using System.Collections.Generic;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
+using Domain.DeliverySubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using System.Threading.Tasks;
 using Utf8Json;
 using Unity;
 using Microsoft.Extensions.Logging;
-using Application;
+using RentalUsecase;
+using DeliveryUsecase;
 
 namespace EventStore
 {
@@ -23,6 +26,7 @@ namespace EventStore
             { typeof(I本を延長するCommand), typeof(I本を延長するCommandHandler) },
             { typeof(I本を返すCommand), typeof(I本を返すCommandHandler) },
             { typeof(I本を破棄するCommand), typeof(I本を破棄するCommandHandler) },
+            { typeof(I本を発送するCommand), typeof(I本を発送するCommandHandler) },
         };
 
         private byte[] Serialize(ICommand _command)
@@ -35,9 +39,10 @@ namespace EventStore
                 I本を延長するCommand cmd => JsonSerializer.Serialize(cmd),
                 I本を返すCommand cmd => JsonSerializer.Serialize(cmd),
                 I本を破棄するCommand cmd => JsonSerializer.Serialize(cmd),
+                I本を発送するCommand cmd => JsonSerializer.Serialize(cmd),
                 _ => throw new ArgumentException(nameof(_command), "ICommandに対応するICommandHandlerが登録されていません。")
             };
-
+            
         private IUnityContainer Container { get; }
         private Guid StreamId { get; }
         private ILogger<ICommandBus> Logger { get; }
@@ -76,6 +81,8 @@ namespace EventStore
             sw.Start();
             await handler.HandleAsync(_command);
             sw.Stop();
+
+            Logger.LogInformation(handlerType.FullName + ":" + System.Text.Encoding.UTF8.GetString((Serialize(_command))));
 
             using(var c = EventStoreConnection.Create(
                 ConnectionSettings.Create()

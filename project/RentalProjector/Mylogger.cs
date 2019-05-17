@@ -8,7 +8,8 @@ using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
 using Unity;
 using Unity.Microsoft.DependencyInjection;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using EventStore.ClientAPI.PersistentSubscriptions;
@@ -17,7 +18,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Utf8Json;
 
-namespace WatchApp
+namespace RentalProjector
 {
     public class Mylogger : EventStore.ClientAPI.ILogger
     {

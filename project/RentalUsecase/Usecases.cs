@@ -1,23 +1,10 @@
 using System;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using System.Threading.Tasks;
 
-namespace Application
+namespace RentalUsecase
 {
-    public interface ICommand
-    {
-
-    }
-
-    public interface ICommandHandler
-    {
-        Task HandleAsync(ICommand _command);
-    }
-    public interface ICommandBus
-    {
-        Task ExecuteAsync(ICommand _command);
-    }
-
     public interface I利用者を登録するCommand : ICommand
     {
         string 苗字 { get; }

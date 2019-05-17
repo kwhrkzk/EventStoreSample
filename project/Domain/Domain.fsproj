@@ -5,7 +5,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="classes.fs" />
+    <Compile Include="general.fs" />
+    <Compile Include="rental.fs" />
+    <Compile Include="delivery.fs" />
   </ItemGroup>
 
   <ItemGroup>

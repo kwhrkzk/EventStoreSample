@@ -6,13 +6,14 @@ using MicroBatchFramework;
 using MicroBatchFramework.Logging;
 using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
-using Domain;
-using Application;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
+using RentalUsecase;
 using Reactive.Bindings;
 using Reactive.Bindings.Extensions;
 using Reactive.Bindings.Notifiers;
 
-namespace MainApp
+namespace RentalApp
 {
     public class Scenario: BatchBase
     {
@@ -134,16 +135,17 @@ namespace MainApp
         {
             var ログイン情報 = ログイン情報Query.First();
 
-            var item = 本の状況Query.All().First();
-
-            if (item.貸し出しされている)
+            try
             {
-                Context.Logger.LogInformation("貸し出しされているため、本を借りることができません。");
-                return;
-            }
+                var item = 本の状況Query.借りてない本().First();
 
-            var _貸出期間 = 貸出期間.デフォルト期間(DateTime.UtcNow);
-            await CommandBus.ExecuteAsync(本を借りるCommand.Create(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber, _貸出期間));
+                var _貸出期間 = 貸出期間.デフォルト期間(DateTime.UtcNow);
+                await CommandBus.ExecuteAsync(本を借りるCommand.Create(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber, _貸出期間));
+            }
+            catch (System.Exception ex)
+            {
+                Context.Logger.LogInformation("全て貸しています。 :" + ex.Message);
+            }
         }
 
         [Command("本を延長する")]
@@ -176,9 +178,13 @@ namespace MainApp
 
                 await CommandBus.ExecuteAsync(本を返すCommand.Create(ログイン情報.ID, ログイン情報.EventNumber, item.本のID, item.本のEventNumber));
             }
-            catch (System.Exception)
+            catch(EventStore.ClientAPI.Exceptions.ServerErrorException ex)
             {
-                Context.Logger.LogInformation("借りている本がありません。");
+                Context.Logger.LogError(nameof(EventStore.ClientAPI.Exceptions.ServerErrorException) + ex.Message);
+            }
+            catch (System.Exception ex)
+            {
+                Context.Logger.LogInformation("借りている本がありません。" + ex.Message);
             }
         }
 

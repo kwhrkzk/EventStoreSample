@@ -1,12 +1,13 @@
 using System;
 using System.Text;
-using Domain;
+using Domain.GeneralSubDomain;
+using Domain.RentalSubDomain;
 using EventStore.ClientAPI;
 using EventStore.ClientAPI.SystemData;
 using System.Threading.Tasks;
 using Utf8Json;
 using Microsoft.Extensions.Logging;
-using Application;
+using RentalUsecase;
 using Unity;
 using Reactive.Bindings;
 using Reactive.Bindings.Extensions;
@@ -15,12 +16,12 @@ using Reactive.Bindings.Notifiers;
 
 namespace EventStore
 {
-    public class 本を登録するCommand: I本を登録するCommand
+    public class 本を登録するCommand : I本を登録するCommand
     {
         public タイトル タイトル { get; }
         public ISBN ISBN { get; }
 
-        [InjectionConstructor]public 本を登録するCommand(){}
+        [InjectionConstructor] public 本を登録するCommand() { }
 
         public 本を登録するCommand(タイトル _タイトル, ISBN _isbn)
         {
@@ -31,11 +32,11 @@ namespace EventStore
         public I本を登録するCommand Create(タイトル _タイトル, ISBN _isbn) => new 本を登録するCommand(_タイトル, _isbn);
     }
 
-    public class 本が登録されたEvent: I本が登録されたEvent
+    public class 本が登録されたEvent : I本が登録されたEvent
     {
         public 書籍のID 書籍のID { get; }
 
-        [InjectionConstructor]public 本が登録されたEvent(){}
+        [InjectionConstructor] public 本が登録されたEvent() { }
 
         public 本が登録されたEvent(書籍のID _書籍のID)
         {
@@ -44,7 +45,7 @@ namespace EventStore
         public I本が登録されたEvent Create(書籍のID _書籍のID) => new 本が登録されたEvent(_書籍のID);
     }
 
-    public class 本を登録するCommandHandler: I本を登録するCommandHandler
+    public class 本を登録するCommandHandler : I本を登録するCommandHandler
     {
         private ILogger<I本を登録するCommandHandler> Logger { get; }
         private I本Factory 本Factory { get; }
@@ -69,66 +70,71 @@ namespace EventStore
 
         public async Task HandleAsync(ICommand _command)
         {
-            if (_command is I本を登録するCommand cmd)
-            {
-                var _書籍 = 書籍Factory.Create(cmd.タイトル, cmd.ISBN);
-                var _本 = 本Factory.Create(_書籍.ID);
+            var cmd = _command as I本を登録するCommand;
+            if (cmd == null)
+                throw new ArgumentException(nameof(_command), "I本を登録するCommand型ではありません。");
 
-                using(var c = EventStoreConnection.Create(
-                    ConnectionSettings.Create()
-                        .SetDefaultUserCredentials(Connection.UserCredentials())
-                        .UseConsoleLogger()
-                    , Connection.EventStoreUri()))
+            var _書籍のID = 書籍のID.New();
+            var _本のID = 本のID.New();
+
+            var 書籍のEventData =
+                new EventData(
+                    Guid.NewGuid(),
+                    Domain.RentalSubDomain.Events.BookInfo.AddedBookInfoVer100,
+                    true,
+                    JsonSerializer.Serialize(Domain.RentalSubDomain.Events.BookInfo.AddedBookInfoDTOVer100.Create(_書籍のID.ID文字列, cmd.タイトル.タイトル, cmd.ISBN.ISBN)),
+                    new byte[] { }
+                );
+
+            var 本のEventData = 
+                new EventData(
+                    Guid.NewGuid(),
+                    Domain.RentalSubDomain.Events.Book.AddedBookVer100,
+                    true,
+                    JsonSerializer.Serialize(Domain.RentalSubDomain.Events.Book.AddedBookDTOVer100.Create(_本のID.ID文字列, _書籍のID.ID文字列)),
+                    new byte[] { }
+                );
+
+            using (var c = EventStoreConnection.Create(
+                ConnectionSettings.Create().SetDefaultUserCredentials(Connection.UserCredentials())
+                , Connection.EventStoreUri()))
+            {
+                try
                 {
                     await c.ConnectAsync();
 
-                    var 本trans = await c.StartTransactionAsync(_本.GUID文字列, ExpectedVersion.NoStream);
-                    var 書籍trans = await c.StartTransactionAsync(_書籍.GUID文字列, ExpectedVersion.NoStream);
+                    ConditionalWriteResult 書籍Result = await c.ConditionalAppendToStreamAsync(_書籍のID.ID文字列, ExpectedVersion.NoStream, new []{書籍のEventData});
+                    ConditionalWriteResult 本Result = await c.ConditionalAppendToStreamAsync(_本のID.ID文字列, ExpectedVersion.NoStream, new []{本のEventData});
 
-                    try
+                    if (ConditionalWriteStatus.Succeeded.Equals(書籍Result.Status) &&
+                        ConditionalWriteStatus.Succeeded.Equals(本Result.Status))
                     {
-                        await 本trans.WriteAsync(new EventData(
-                            Guid.NewGuid(),
-                            typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
-                            true,
-                            JsonSerializer.Serialize(_本.Convert()),
-                            new byte[]{}
-                        ));
+                        await c.AppendToStreamAsync(_書籍のID.ID文字列, ExpectedVersion.NoStream, 書籍のEventData);
+                        await c.AppendToStreamAsync(_本のID.ID文字列, ExpectedVersion.NoStream, 本のEventData);
 
-                        await 書籍trans.WriteAsync(new EventData(
-                            Guid.NewGuid(),
-                            typeof(書籍DTO).FullName + "," + typeof(書籍DTO).Assembly.FullName,
-                            true,
-                            JsonSerializer.Serialize(_書籍.Convert()),
-                            new byte[]{}
-                        ));
+                        await c.CreatePersistentSubscriptionAsync(_書籍のID.ID文字列, Domain.GeneralSubDomain.Aggregate.BookInfo, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
+                        await c.CreatePersistentSubscriptionAsync(_本のID.ID文字列, Domain.GeneralSubDomain.Aggregate.Book, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
 
-                        await 本trans.CommitAsync();
-                        await 書籍trans.CommitAsync();
+                        MessageBroker.Publish<I本が登録されたEvent>(本が登録されたEvent.Create(_書籍のID));
                     }
-                    catch (System.Exception ex)
+                    else
                     {
-                        Logger.LogError(ex.Message);
-
-                        本trans.Rollback();
-                        書籍trans.Rollback();
+                        Logger.LogError($"書籍Result.Status = {Enum.GetName(typeof(ConditionalWriteStatus), 書籍Result.Status)}, 本Result.Status = {Enum.GetName(typeof(ConditionalWriteStatus), 本Result.Status)}");
                     }
-
-                    await c.CreatePersistentSubscriptionAsync(_本.GUID文字列, typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
-                    await c.CreatePersistentSubscriptionAsync(_書籍.GUID文字列, typeof(書籍DTO).FullName + "," + typeof(書籍DTO).Assembly.FullName, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
-
+                }
+                finally
+                {
                     c.Close();
                 }
-
-                MessageBroker.Publish<I本が登録されたEvent>(本が登録されたEvent.Create(_書籍.ID));
             }
         }
     }
-    public class 本を登録する2Command: I本を登録する2Command
+
+    public class 本を登録する2Command : I本を登録する2Command
     {
         public 書籍のID 書籍のID { get; }
 
-        [InjectionConstructor]public 本を登録する2Command(){}
+        [InjectionConstructor] public 本を登録する2Command() { }
 
         public 本を登録する2Command(書籍のID _書籍のID)
         {
@@ -138,7 +144,7 @@ namespace EventStore
         public I本を登録する2Command Create(書籍のID _書籍のID) => new 本を登録する2Command(_書籍のID);
     }
 
-    public class 本を登録する2CommandHandler: I本を登録する2CommandHandler
+    public class 本を登録する2CommandHandler : I本を登録する2CommandHandler
     {
         private ILogger<I本を登録する2CommandHandler> Logger { get; }
         private I本Factory 本Factory { get; }
@@ -154,41 +160,32 @@ namespace EventStore
 
         public async Task HandleAsync(ICommand _command)
         {
-            if (_command is I本を登録する2Command cmd)
-            {
-                var _本 = 本Factory.Create(cmd.書籍のID);
+            var cmd = _command as I本を登録する2Command;
+            if (cmd == null)
+                throw new ArgumentException(nameof(_command), "I本を登録する2Command型ではありません。");
 
-                using(var c = EventStoreConnection.Create(
-                    ConnectionSettings.Create()
-                        .SetDefaultUserCredentials(Connection.UserCredentials())
-                        .UseConsoleLogger()
-                    , Connection.EventStoreUri()))
+            using (var c = EventStoreConnection.Create(
+                ConnectionSettings.Create().SetDefaultUserCredentials(Connection.UserCredentials())
+                , Connection.EventStoreUri()))
+            {
+                try
                 {
                     await c.ConnectAsync();
 
-                    var 本trans = await c.StartTransactionAsync(_本.GUID文字列, ExpectedVersion.NoStream);
+                    var _本のID = 本のID.New();
 
-                    try
-                    {
-                        await 本trans.WriteAsync(new EventData(
+                    var 本trans = await c.AppendToStreamAsync(_本のID.ID文字列, ExpectedVersion.NoStream, new EventData(
                             Guid.NewGuid(),
-                            typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName,
+                            Domain.RentalSubDomain.Events.Book.AddedBookVer100,
                             true,
-                            JsonSerializer.Serialize(_本.Convert()),
-                            new byte[]{}
+                            JsonSerializer.Serialize(Domain.RentalSubDomain.Events.Book.AddedBookDTOVer100.Create(_本のID.ID文字列, cmd.書籍のID.ID文字列)),
+                            new byte[] { }
                         ));
 
-                        await 本trans.CommitAsync();
-                    }
-                    catch (System.Exception ex)
-                    {
-                        Logger.LogError(ex.Message);
-
-                        本trans.Rollback();
-                    }
-
-                    await c.CreatePersistentSubscriptionAsync(_本.GUID文字列, typeof(本DTO).FullName + "," + typeof(本DTO).Assembly.FullName, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
-
+                    await c.CreatePersistentSubscriptionAsync(_本のID.ID文字列, Domain.GeneralSubDomain.Aggregate.Book, PersistentSubscriptionSettings.Create(), Connection.UserCredentials());
+                }
+                finally
+                {
                     c.Close();
                 }
             }
